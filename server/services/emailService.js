@@ -16,17 +16,30 @@ const createTransporter = async () => {
 
     // Primary method: Gmail App Password (SIMPLE & RECOMMENDED)
     if (process.env.EMAIL_PASS) {
+      // Use port 465 with SSL instead of 587 with TLS
+      // Port 587 is often blocked by hosting providers like Render
       const transporter = nodemailer.createTransport({
-        service: 'gmail',
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true, // Use SSL
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASS,
         },
+        // Add timeout and connection settings
+        connectionTimeout: 10000, // 10 seconds
+        greetingTimeout: 10000,
+        socketTimeout: 10000,
       });
 
       // Verify transporter configuration
-      await transporter.verify();
-      console.log('✅ Email transporter verified successfully');
+      try {
+        await transporter.verify();
+        console.log('✅ Email transporter verified successfully');
+      } catch (error) {
+        console.error('⚠️ Email verification failed, but will attempt to send:', error.message);
+        // Don't throw error here - let actual sending attempt fail if needed
+      }
       
       return transporter;
     }

@@ -22,6 +22,10 @@ dotenv.config();
 
 const app = express();
 
+// Trust proxy - Required for Render, Heroku, etc.
+// This allows Express to trust X-Forwarded-* headers
+app.set('trust proxy', 1);
+
 // CORS configuration - MUST come before other middleware
 const allowedOrigins = [
   process.env.FRONTEND_URL,
@@ -62,6 +66,9 @@ const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
   message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Trust proxy is already set above, so rate limiter will work correctly
 });
 app.use('/api/', limiter);
 
