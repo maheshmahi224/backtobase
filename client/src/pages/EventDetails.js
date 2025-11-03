@@ -247,40 +247,6 @@ const EventDetails = () => {
     }
   };
 
-  const handleSendConfirmations = async () => {
-    setSending(true);
-
-    try {
-      const response = await emailAPI.sendConfirmations({
-        eventId: id,
-        participantIds: selectedParticipants.length > 0 ? selectedParticipants : undefined,
-        subject: emailData.subject,
-        htmlContent: emailData.htmlContent,
-        batchSize: 100,
-      });
-
-      // Show detailed status modal
-      const result = response.data;
-      setEmailStatus({
-        success: result.data?.successCount || 0,
-        failed: result.data?.failedCount || 0,
-        total: result.data?.totalRecipients || 0,
-        errors: result.data?.errors || [],
-      });
-      setShowEmailStatusModal(true);
-
-      setShowEmailModal(false);
-      setSelectedParticipants([]);
-      setTimeout(() => {
-        fetchEventDetails();
-      }, 2000);
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to send confirmations');
-    } finally {
-      setSending(false);
-    }
-  };
-
   const handleDeleteEvent = async () => {
     if (!window.confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
       return;
