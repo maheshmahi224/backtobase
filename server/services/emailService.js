@@ -7,48 +7,63 @@ const OAuth2 = google.auth.OAuth2;
 // Create transporter with Gmail App Password (Simple & Reliable)
 const createTransporter = async () => {
   try {
-    // Check if using App Password (simpler method)
-    if (process.env.GMAIL_APP_PASSWORD) {
-      console.log('📧 Using Gmail App Password authentication');
+    // Validate required environment variables
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      throw new Error('EMAIL_USER and EMAIL_PASS environment variables are required for email service');
+    }
+
+    console.log('📧 Creating Gmail transporter for:', process.env.EMAIL_USER);
+
+    // Primary method: Gmail App Password (SIMPLE & RECOMMENDED)
+    if (process.env.EMAIL_PASS) {
       const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
-          user: process.env.EMAIL_FROM,
-          pass: process.env.GMAIL_APP_PASSWORD,
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
         },
       });
+
+      // Verify transporter configuration
+      await transporter.verify();
+      console.log('✅ Email transporter verified successfully');
+      
       return transporter;
     }
 
-    // Fallback to OAuth2 (complex method)
-    console.log('📧 Using Gmail OAuth2 authentication');
-    const oauth2Client = new OAuth2(
-      process.env.GMAIL_CLIENT_ID,
-      process.env.GMAIL_CLIENT_SECRET,
-      process.env.GMAIL_REDIRECT_URI
-    );
+    // Fallback to OAuth2 (only if EMAIL_PASS is not available)
+    if (process.env.GMAIL_CLIENT_ID && process.env.GMAIL_REFRESH_TOKEN) {
+      console.log('📧 Using Gmail OAuth2 authentication');
+      const oauth2Client = new OAuth2(
+        process.env.GMAIL_CLIENT_ID,
+        process.env.GMAIL_CLIENT_SECRET,
+        process.env.GMAIL_REDIRECT_URI
+      );
 
-    oauth2Client.setCredentials({
-      refresh_token: process.env.GMAIL_REFRESH_TOKEN,
-    });
+      oauth2Client.setCredentials({
+        refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+      });
 
-    const accessToken = await oauth2Client.getAccessToken();
+      const accessToken = await oauth2Client.getAccessToken();
 
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        type: 'OAuth2',
-        user: process.env.EMAIL_FROM,
-        clientId: process.env.GMAIL_CLIENT_ID,
-        clientSecret: process.env.GMAIL_CLIENT_SECRET,
-        refreshToken: process.env.GMAIL_REFRESH_TOKEN,
-        accessToken: accessToken.token,
-      },
-    });
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          type: 'OAuth2',
+          user: process.env.EMAIL_USER,
+          clientId: process.env.GMAIL_CLIENT_ID,
+          clientSecret: process.env.GMAIL_CLIENT_SECRET,
+          refreshToken: process.env.GMAIL_REFRESH_TOKEN,
+          accessToken: accessToken.token,
+        },
+      });
 
-    return transporter;
+      return transporter;
+    }
+
+    throw new Error('No valid email authentication method configured');
   } catch (error) {
-    console.error('Error creating email transporter:', error);
+    console.error('❌ Error creating email transporter:', error.message);
     throw error;
   }
 };
