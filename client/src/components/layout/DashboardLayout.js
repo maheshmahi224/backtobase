@@ -6,6 +6,7 @@ import {
   Mail, 
   CheckSquare, 
   Star, 
+  UserCheck,
   Settings, 
   LogOut,
   Menu,
@@ -30,6 +31,7 @@ const DashboardLayout = () => {
     { name: 'Invited People', href: '/invited', icon: Mail },
     { name: 'Checked-In', href: '/checked-in', icon: CheckSquare },
     { name: 'Shortlisted', href: '/shortlisted', icon: Star },
+    { name: 'Attended People', href: '/attended', icon: UserCheck },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
 

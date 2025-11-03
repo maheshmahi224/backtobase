@@ -43,6 +43,8 @@ export const eventAPI = {
   update: (id, data) => api.put(`/events/${id}`, data),
   delete: (id) => api.delete(`/events/${id}`),
   getStats: (id) => api.get(`/events/${id}/stats`),
+  uploadICS: (id, data) => api.post(`/events/${id}/upload-ics`, data),
+  downloadICS: (id) => `${API_URL}/events/${id}/download-ics`,
 };
 
 // Participant API
@@ -76,6 +78,25 @@ export const shortlistAPI = {
   getShortlisted: (eventId, params) => api.get(`/shortlist/${eventId}`, { params }),
   add: (participantIds) => api.post('/shortlist/add', { participantIds }),
   remove: (participantIds) => api.post('/shortlist/remove', { participantIds }),
+};
+
+// Template API
+export const templateAPI = {
+  getByEvent: (eventId) => api.get(`/templates/${eventId}`),
+  getOne: (templateId) => api.get(`/templates/single/${templateId}`),
+  create: (data) => api.post('/templates', data),
+  update: (templateId, data) => api.put(`/templates/${templateId}`, data),
+  delete: (templateId) => api.delete(`/templates/${templateId}`),
+  getDefaults: (eventId) => api.get(`/templates/defaults/${eventId}`),
+};
+
+// QR Code API
+export const qrAPI = {
+  verify: (qrData) => api.post('/qr/verify', { qrData }),
+  scan: (qrData) => api.post('/qr/scan', { qrData }),
+  generate: (participantId) => api.get(`/qr/generate/${participantId}`),
+  getAttended: (eventId, params) => api.get(`/qr/attended/${eventId}`, { params }),
+  getStats: (eventId) => api.get(`/qr/stats/${eventId}`),
 };
 
 export default api;

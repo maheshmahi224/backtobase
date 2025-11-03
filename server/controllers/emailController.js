@@ -1,6 +1,6 @@
 import Event from '../models/Event.js';
 import Participant from '../models/Participant.js';
-import { sendBulkEmails, replacePlaceholders } from '../services/emailService.js';
+import { sendBulkEmails, replacePlaceholders, replacePlaceholdersWithQR } from '../services/emailService.js';
 
 // @desc    Send invitation emails
 // @route   POST /api/email/send-invitations
@@ -50,27 +50,38 @@ export const sendInvitations = async (req, res, next) => {
       });
     }
 
-    // Prepare email data
-    const emailData = participants.map(participant => ({
-      to: participant.email,
-      subject: replacePlaceholders(subject, {
-        name: participant.name,
-        eventName: event.eventName,
-        venue: event.venue,
-        date: event.date,
-        time: event.time,
-      }),
-      html: replacePlaceholders(htmlContent, {
+    // Prepare email data with QR code support (FAST - no async needed!)
+    const emailData = participants.map((participant) => {
+      const placeholderData = {
         name: participant.name,
         eventName: event.eventName,
         venue: event.venue,
         date: event.date,
         time: event.time,
         checkinLink: `${process.env.FRONTEND_URL}/checkin/${participant.token}`,
-        calendarLink: generateGoogleCalendarLink(event),
-      }),
-      participantId: participant._id,
-    }));
+        calendarLink: event.icsFile 
+          ? `${process.env.FRONTEND_URL.replace('/api', '')}/api/events/${event._id}/download-ics`
+          : generateGoogleCalendarLink(event),
+      };
+      
+      const emailOptions = {
+        to: participant.email,
+        subject: replacePlaceholders(subject, placeholderData),
+        html: replacePlaceholdersWithQR(htmlContent, placeholderData, participant),
+        participantId: participant._id,
+      };
+
+      // Add ICS file as attachment if available
+      if (event.icsFile) {
+        emailOptions.attachments = [{
+          filename: event.icsFileName || `${event.eventName}.ics`,
+          content: event.icsFile,
+          contentType: 'text/calendar',
+        }];
+      }
+
+      return emailOptions;
+    });
 
     // Process emails and wait for results
     const results = await sendBulkEmails(emailData, batchSize);
@@ -166,54 +177,91 @@ export const sendConfirmations = async (req, res, next) => {
       });
     }
 
-    // Prepare email data
-    const emailData = participants.map(participant => ({
-      to: participant.email,
-      subject: replacePlaceholders(subject, {
+    // Prepare email data with QR code support (FAST - no async needed!)
+    const emailData = participants.map((participant) => {
+      const placeholderData = {
         name: participant.name,
         eventName: event.eventName,
         venue: event.venue,
         date: event.date,
         time: event.time,
-      }),
-      html: replacePlaceholders(htmlContent, {
-        name: participant.name,
-        eventName: event.eventName,
-        venue: event.venue,
-        date: event.date,
-        time: event.time,
-      }),
-      participantId: participant._id,
-    }));
+        calendarLink: event.icsFile 
+          ? `${process.env.FRONTEND_URL.replace('/api', '')}/api/events/${event._id}/download-ics`
+          : '',
+      };
+      
+      const emailOptions = {
+        to: participant.email,
+        subject: replacePlaceholders(subject, placeholderData),
+        html: replacePlaceholdersWithQR(htmlContent, placeholderData, participant),
+        participantId: participant._id,
+      };
 
-    // Send emails
-    res.status(200).json({
-      status: 'success',
-      message: `Sending confirmations to ${participants.length} participants`,
-      data: {
-        totalRecipients: participants.length,
-      },
+      // Add ICS file as attachment if available
+      if (event.icsFile) {
+        emailOptions.attachments = [{
+          filename: event.icsFileName || `${event.eventName}.ics`,
+          content: event.icsFile,
+          contentType: 'text/calendar',
+        }];
+      }
+
+      return emailOptions;
     });
 
-    // Process emails asynchronously
-    sendBulkEmails(emailData, batchSize)
-      .then(async (results) => {
-        console.log(`✅ Sent ${results.successful.length} confirmation emails`);
-        
-        // Update participants
-        if (results.successful.length > 0) {
-          await Participant.updateMany(
-            { _id: { $in: results.successful } },
-            {
-              confirmationSent: true,
-              confirmationSentAt: new Date(),
-            }
-          );
+    // Auto-shortlist participants before sending confirmations
+    if (participantIds && participantIds.length > 0) {
+      await Participant.updateMany(
+        { _id: { $in: participantIds }, shortlisted: false },
+        {
+          shortlisted: true,
+          shortlistedAt: new Date(),
         }
-      })
-      .catch(error => {
-        console.error('❌ Error sending confirmation emails:', error);
-      });
+      );
+    }
+
+    // Send emails and wait for results
+    const results = await sendBulkEmails(emailData, batchSize);
+    
+    console.log(`✅ Sent ${results.successful.length} confirmation emails`);
+    
+    // Update participants who received confirmation emails
+    if (results.successful.length > 0) {
+      await Participant.updateMany(
+        { _id: { $in: results.successful } },
+        {
+          confirmationSent: true,
+          confirmationSentAt: new Date(),
+          shortlisted: true,
+          shortlistedAt: new Date(),
+        }
+      );
+    }
+
+    // Update failed participants
+    if (results.failed.length > 0) {
+      for (const failure of results.failed) {
+        await Participant.findByIdAndUpdate(failure.participantId, {
+          emailStatus: 'failed',
+          emailError: failure.error,
+        });
+      }
+    }
+
+    // Update event stats
+    await event.updateStats();
+
+    res.status(200).json({
+      status: 'success',
+      message: `Confirmation emails sent: ${results.successful.length} sent, ${results.failed.length} failed`,
+      data: {
+        totalRecipients: participants.length,
+        successCount: results.successful.length,
+        failedCount: results.failed.length,
+        shortlistedCount: results.successful.length,
+        errors: results.failed,
+      },
+    });
 
   } catch (error) {
     next(error);

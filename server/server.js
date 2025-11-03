@@ -14,6 +14,8 @@ import participantRoutes from './routes/participantRoutes.js';
 import emailRoutes from './routes/emailRoutes.js';
 import checkinRoutes from './routes/checkinRoutes.js';
 import shortlistRoutes from './routes/shortlistRoutes.js';
+import templateRoutes from './routes/templateRoutes.js';
+import qrRoutes from './routes/qrRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -67,6 +69,8 @@ app.use('/api/participants', participantRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/checkin', checkinRoutes);
 app.use('/api/shortlist', shortlistRoutes);
+app.use('/api/templates', templateRoutes);
+app.use('/api/qr', qrRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

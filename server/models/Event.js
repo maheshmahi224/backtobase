@@ -26,6 +26,14 @@ const eventSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  icsFile: {
+    type: String,
+    default: '',
+  },
+  icsFileName: {
+    type: String,
+    default: '',
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -50,6 +58,10 @@ const eventSchema = new mongoose.Schema({
       default: 0,
     },
     totalShortlisted: {
+      type: Number,
+      default: 0,
+    },
+    totalAttended: {
       type: Number,
       default: 0,
     },
@@ -86,9 +98,15 @@ eventSchema.methods.updateStats = async function() {
     shortlisted: true,
   });
   
+  const attendedCount = await Participant.countDocuments({
+    eventId: this._id,
+    attended: true,
+  });
+  
   this.stats.totalInvited = invitedCount;
   this.stats.totalCheckedIn = checkedInCount;
   this.stats.totalShortlisted = shortlistedCount;
+  this.stats.totalAttended = attendedCount;
   
   await this.save();
 };

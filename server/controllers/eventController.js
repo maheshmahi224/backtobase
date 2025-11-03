@@ -229,3 +229,84 @@ export const getEventStats = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Upload ICS file for event
+// @route   POST /api/events/:id/upload-ics
+// @access  Private
+export const uploadICS = async (req, res, next) => {
+  try {
+    const { icsContent, fileName } = req.body;
+
+    if (!icsContent) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'ICS file content is required',
+      });
+    }
+
+    const event = await Event.findById(req.params.id);
+
+    if (!event) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Event not found',
+      });
+    }
+
+    // Check authorization
+    if (event.createdBy.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Not authorized',
+      });
+    }
+
+    // Store ICS file content
+    event.icsFile = icsContent;
+    event.icsFileName = fileName || `${event.eventName}.ics`;
+    await event.save();
+
+    res.status(200).json({
+      status: 'success',
+      message: 'ICS file uploaded successfully',
+      data: {
+        fileName: event.icsFileName,
+        downloadUrl: `${process.env.FRONTEND_URL}/api/events/${event._id}/download-ics`,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Download ICS file for event
+// @route   GET /api/events/:id/download-ics
+// @access  Public
+export const downloadICS = async (req, res, next) => {
+  try {
+    const event = await Event.findById(req.params.id);
+
+    if (!event) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Event not found',
+      });
+    }
+
+    if (!event.icsFile) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'No ICS file available for this event',
+      });
+    }
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'text/calendar');
+    res.setHeader('Content-Disposition', `attachment; filename="${event.icsFileName}"`);
+    
+    // Send the ICS content
+    res.send(event.icsFile);
+  } catch (error) {
+    next(error);
+  }
+};

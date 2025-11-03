@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Upload, Mail, Users, UserCheck, Star, Trash2 } from 'lucide-react';
+import { ArrowLeft, Upload, Mail, Users, UserCheck, Star, Trash2, QrCode, CheckSquare, Save } from 'lucide-react';
 import Papa from 'papaparse';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
-import { eventAPI, participantAPI, emailAPI } from '../utils/api';
+import SimpleTemplateEditor from '../components/SimpleTemplateEditor';
+import { eventAPI, participantAPI, emailAPI, templateAPI } from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import { formatDate } from '../utils/helpers';
 
@@ -36,6 +37,11 @@ const EventDetails = () => {
     total: 0,
     errors: [],
   });
+  const [icsFile, setIcsFile] = useState(null);
+  const [uploadingICS, setUploadingICS] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [savedTemplateId, setSavedTemplateId] = useState(null);
+  const [existingTemplate, setExistingTemplate] = useState(null);
 
   useEffect(() => {
     fetchEventDetails();
@@ -85,6 +91,95 @@ const EventDetails = () => {
 
   const handleFileChange = (e) => {
     setCsvFile(e.target.files[0]);
+  };
+
+  const handleICSFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (file && file.name.endsWith('.ics')) {
+      setIcsFile(file);
+      // Auto-upload when file is selected
+      await handleUploadICS(file);
+    } else {
+      toast.error('Please select a valid .ics file');
+    }
+  };
+
+  const handleUploadICS = async (file) => {
+    setUploadingICS(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const icsContent = e.target.result;
+        await eventAPI.uploadICS(id, {
+          icsContent,
+          fileName: file.name,
+        });
+        toast.success('Calendar file uploaded successfully!');
+        fetchEventDetails();
+      };
+      reader.readAsText(file);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to upload calendar file');
+    } finally {
+      setUploadingICS(false);
+    }
+  };
+
+  const loadExistingTemplate = async () => {
+    try {
+      const response = await templateAPI.getByEvent(id);
+      const templates = response.data.data.templates;
+      if (templates && templates.length > 0) {
+        const template = templates[0];
+        setExistingTemplate(template);
+        setSavedTemplateId(template._id);
+        setEmailData({
+          subject: template.subject,
+          htmlContent: template.htmlContent,
+        });
+      } else {
+        setExistingTemplate(null);
+        setSavedTemplateId(null);
+      }
+    } catch (error) {
+      console.error('Error loading template:', error);
+      setExistingTemplate(null);
+      setSavedTemplateId(null);
+    }
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!emailData.subject || !emailData.htmlContent) {
+      toast.error('Please fill in subject and content');
+      return;
+    }
+
+    setSavingTemplate(true);
+    try {
+      const templateData = {
+        name: `Email Template - ${event.eventName}`,
+        type: 'general',
+        subject: emailData.subject,
+        htmlContent: emailData.htmlContent,
+        eventId: id,
+      };
+
+      let response;
+      if (savedTemplateId) {
+        response = await templateAPI.update(savedTemplateId, templateData);
+        toast.success('Template updated successfully!');
+      } else {
+        response = await templateAPI.create(templateData);
+        setSavedTemplateId(response.data.data._id);
+        toast.success('Template saved successfully!');
+      }
+
+      setShowEmailModal(false);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to save template');
+    } finally {
+      setSavingTemplate(false);
+    }
   };
 
   const handleUploadCSV = async () => {
@@ -147,6 +242,40 @@ const EventDetails = () => {
       }, 2000);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to send invitations');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleSendConfirmations = async () => {
+    setSending(true);
+
+    try {
+      const response = await emailAPI.sendConfirmations({
+        eventId: id,
+        participantIds: selectedParticipants.length > 0 ? selectedParticipants : undefined,
+        subject: emailData.subject,
+        htmlContent: emailData.htmlContent,
+        batchSize: 100,
+      });
+
+      // Show detailed status modal
+      const result = response.data;
+      setEmailStatus({
+        success: result.data?.successCount || 0,
+        failed: result.data?.failedCount || 0,
+        total: result.data?.totalRecipients || 0,
+        errors: result.data?.errors || [],
+      });
+      setShowEmailStatusModal(true);
+
+      setShowEmailModal(false);
+      setSelectedParticipants([]);
+      setTimeout(() => {
+        fetchEventDetails();
+      }, 2000);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to send confirmations');
     } finally {
       setSending(false);
     }
@@ -336,15 +465,48 @@ const EventDetails = () => {
         </Card>
       </div>
 
+      {/* Attended Stats Row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-100 dark:bg-indigo-900/20 rounded">
+                <UserCheck className="w-5 h-5 text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{event.stats?.totalAttended || 0}</p>
+                <p className="text-sm text-muted-foreground">Attended (QR Scanned)</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-6">
+            <Button 
+              onClick={() => navigate(`/attended/${id}`)} 
+              className="w-full"
+              variant="outline"
+            >
+              <QrCode className="w-4 h-4 mr-2" />
+              View Attended People & Scan QR
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Actions */}
       <div className="flex gap-3">
         <Button onClick={() => setShowUploadModal(true)}>
           <Upload className="w-4 h-4 mr-2" />
           Upload CSV
         </Button>
-        <Button onClick={() => setShowEmailModal(true)} variant="secondary">
-          <Mail className="w-4 h-4 mr-2" />
-          Send Invitations
+        <Button onClick={async () => { 
+          await loadExistingTemplate();
+          setShowEmailModal(true); 
+        }} variant="secondary">
+          <Mail className="h-4 w-4 mr-2" />
+          Edit Email Template
         </Button>
       </div>
 
@@ -356,21 +518,41 @@ const EventDetails = () => {
             {selectedParticipants.length > 0 && (
               <div className="flex gap-2">
                 <Button 
-                  onClick={handleInviteSelected} 
-                  disabled={sending}
+                  variant="outline"
                   size="sm"
+                  onClick={async () => {
+                    try {
+                      const response = await templateAPI.getByEvent(id);
+                      const templates = response.data.data.templates; // Correct property path
+                      const template = templates && templates.length > 0 ? templates[0] : null;
+                      
+                      if (template) {
+                        setEmailData({
+                          subject: template.subject,
+                          htmlContent: template.htmlContent,
+                        });
+                        await handleInviteSelected();
+                      } else {
+                        toast.error('Please create an email template first. Click "Edit Email Template" to create one.');
+                      }
+                    } catch (error) {
+                      console.error('Template load error:', error);
+                      toast.error('Please create an email template first');
+                    }
+                  }}
+                  disabled={sending}
                 >
-                  <Mail className="w-4 h-4 mr-2" />
-                  Invite Selected ({selectedParticipants.length})
+                  <Mail className="h-4 w-4 mr-2" />
+                  Send Emails ({selectedParticipants.length})
                 </Button>
                 <Button 
-                  onClick={handleAddToShortlist} 
-                  disabled={addingToShortlist}
-                  variant="secondary"
+                  variant="outline"
                   size="sm"
+                  onClick={handleAddToShortlist}
+                  disabled={addingToShortlist}
                 >
-                  <Star className="w-4 h-4 mr-2" />
-                  Add to Shortlist ({selectedParticipants.length})
+                  <Star className="h-4 w-4 mr-2" />
+                  Add to Shortlist
                 </Button>
               </div>
             )}
@@ -477,38 +659,76 @@ const EventDetails = () => {
         </div>
       </Modal>
 
-      {/* Send Email Modal */}
+      {/* Send Email Modal with Template Editor */}
       <Modal
         isOpen={showEmailModal}
         onClose={() => setShowEmailModal(false)}
-        title="Send Invitations"
-        size="lg"
+title="Email Template"
+        size="xl"
       >
         <div className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Subject</label>
-            <Input
-              value={emailData.subject}
-              onChange={(e) => setEmailData({ ...emailData, subject: e.target.value })}
-            />
+          {/* ICS File Upload Section */}
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">📅 Calendar File (.ics)</h4>
+                <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                  Upload a calendar file that will be:
+                </p>
+                <ul className="text-sm text-blue-800 dark:text-blue-200 mb-3 list-disc list-inside space-y-1">
+                  <li><strong>Attached to every email</strong> - Recipients can directly add to their calendar</li>
+                  <li><strong>Linked via {'{{calendarLink}}'}</strong> placeholder - Also available as download link</li>
+                </ul>
+                <div className="flex items-center gap-3">
+                  <label className="cursor-pointer">
+                    <Input 
+                      type="file" 
+                      accept=".ics" 
+                      onChange={handleICSFileChange}
+                      className="hidden"
+                      id="ics-upload"
+                    />
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => document.getElementById('ics-upload').click()}
+                      disabled={uploadingICS}
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      {uploadingICS ? 'Uploading...' : event?.icsFileName ? 'Replace .ics File' : 'Upload .ics File'}
+                    </Button>
+                  </label>
+                  {event?.icsFileName && (
+                    <span className="text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
+                      <CheckSquare className="h-4 w-4" />
+                      {event.icsFileName}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Email Content (HTML)</label>
-            <textarea
-              rows={15}
-              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-mono"
-              value={emailData.htmlContent}
-              onChange={(e) => setEmailData({ ...emailData, htmlContent: e.target.value })}
-            />
-            <p className="text-xs text-muted-foreground">
-              Use placeholders: {'{'}{'{'}<strong>name</strong>{'}'}{'}'},  {'{'}{'{'}<strong>checkinLink</strong>{'}'}{'}'},  {'{'}{'{'}<strong>calendarLink</strong>{'}'}{'}'} 
-            </p>
-          </div>
+          <SimpleTemplateEditor 
+            eventId={id}
+            initialTemplate={existingTemplate}
+            onSave={(template) => {
+              setEmailData({
+                subject: template.subject,
+                htmlContent: template.htmlContent,
+              });
+            }}
+          />
 
-          <div className="flex gap-3 pt-4">
-            <Button onClick={handleSendInvitations} disabled={sending} className="flex-1">
-              {sending ? 'Sending...' : 'Send Invitations'}
+          <div className="flex gap-3 pt-4 border-t">
+            <Button 
+              onClick={handleSaveTemplate}
+              disabled={savingTemplate}
+              className="flex-1"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {savingTemplate ? 'Saving...' : savedTemplateId ? 'Update Template' : 'Save Template'}
             </Button>
             <Button
               variant="outline"

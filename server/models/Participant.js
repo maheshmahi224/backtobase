@@ -57,6 +57,13 @@ const participantSchema = new mongoose.Schema({
   confirmationSentAt: {
     type: Date,
   },
+  attended: {
+    type: Boolean,
+    default: false,
+  },
+  attendedAt: {
+    type: Date,
+  },
   token: {
     type: String,
     unique: true,
@@ -112,6 +119,13 @@ participantSchema.methods.markAsShortlisted = async function() {
 participantSchema.methods.markConfirmationSent = async function() {
   this.confirmationSent = true;
   this.confirmationSentAt = new Date();
+  await this.save();
+};
+
+// Mark as attended
+participantSchema.methods.markAsAttended = async function() {
+  this.attended = true;
+  this.attendedAt = new Date();
   await this.save();
 };
 

@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { google } from 'googleapis';
+import { generateParticipantQR } from './qrService.js';
 
 const OAuth2 = google.auth.OAuth2;
 
@@ -53,7 +54,7 @@ const createTransporter = async () => {
 };
 
 // Send single email
-export const sendEmail = async ({ to, subject, html, text }) => {
+export const sendEmail = async ({ to, subject, html, text, attachments }) => {
   try {
     const transporter = await createTransporter();
 
@@ -64,6 +65,11 @@ export const sendEmail = async ({ to, subject, html, text }) => {
       html,
       text: text || '',
     };
+
+    // Add attachments if provided
+    if (attachments && attachments.length > 0) {
+      mailOptions.attachments = attachments;
+    }
 
     const info = await transporter.sendMail(mailOptions);
     console.log(`✅ Email sent to ${to}: ${info.messageId}`);
@@ -101,6 +107,7 @@ export const sendBulkEmails = async (emailsData, batchSize = 100) => {
           subject: emailData.subject,
           html: emailData.html,
           text: emailData.text,
+          attachments: emailData.attachments,
         });
 
         if (result.success) {
@@ -176,6 +183,32 @@ export const replacePlaceholders = (content, data) => {
   return result;
 };
 
+// Replace placeholders including QR code
+export const replacePlaceholdersWithQR = (content, data, participant) => {
+  let result = content;
+  
+  // First replace all standard placeholders
+  for (const [key, value] of Object.entries(data)) {
+    const regex = new RegExp(`{{${key}}}`, 'g');
+    result = result.replace(regex, value || '');
+  }
+  
+  // Generate and replace QR code if placeholder exists
+  if (result.includes('{{qr}}')) {
+    try {
+      const qrCodeURL = generateParticipantQR(participant);
+      const qrImageTag = `<img src="${qrCodeURL}" alt="QR Code" style="max-width: 300px; display: block; margin: 20px auto;" />`;
+      result = result.replace(/{{qr}}/g, qrImageTag);
+    } catch (error) {
+      console.error('Error generating QR code for email:', error);
+      // Remove QR placeholder if generation fails
+      result = result.replace(/{{qr}}/g, '');
+    }
+  }
+  
+  return result;
+};
+
 // Generate default invitation template
 export const getDefaultInvitationTemplate = (eventName) => {
   return {
@@ -215,6 +248,11 @@ export const getDefaultInvitationTemplate = (eventName) => {
             <div style="text-align: center;">
               <a href="{{checkinLink}}" class="button">✓ Check In</a>
               <a href="{{calendarLink}}" class="button">📅 Add to Calendar</a>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              {{qr}}
+              <p style="color: #666; font-size: 12px; margin-top: 10px;">Scan this QR code at the event for quick check-in</p>
             </div>
             
             <p>We look forward to seeing you there!</p>
@@ -266,6 +304,11 @@ export const getDefaultConfirmationTemplate = () => {
             </div>
             
             <p>Please make sure to arrive on time. We're excited to have you join us!</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              {{qr}}
+              <p style="color: #666; font-size: 12px; margin-top: 10px;">Your personal QR code for event entry</p>
+            </div>
             
             <p>For any queries, please feel free to reach out to us.</p>
             

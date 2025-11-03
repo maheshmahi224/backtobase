@@ -13,6 +13,8 @@ import EventDetails from './pages/EventDetails';
 import InvitedPeople from './pages/InvitedPeople';
 import CheckedInPeople from './pages/CheckedInPeople';
 import ShortlistedPeople from './pages/ShortlistedPeople';
+import AttendedPeople from './pages/AttendedPeople';
+import AttendedPeopleGlobal from './pages/AttendedPeopleGlobal';
 import Settings from './pages/Settings';
 import CheckInPage from './pages/CheckInPage';
 
@@ -41,6 +43,8 @@ function App() {
                 <Route path="/invited" element={<InvitedPeople />} />
                 <Route path="/checked-in" element={<CheckedInPeople />} />
                 <Route path="/shortlisted" element={<ShortlistedPeople />} />
+                <Route path="/attended" element={<AttendedPeopleGlobal />} />
+                <Route path="/attended/:eventId" element={<AttendedPeople />} />
                 <Route path="/settings" element={<Settings />} />
               </Route>
 

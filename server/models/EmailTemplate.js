@@ -8,7 +8,7 @@ const emailTemplateSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['invitation', 'confirmation', 'reminder', 'custom'],
+    enum: ['invitation', 'confirmation', 'reminder', 'custom', 'general'],
     required: true,
   },
   subject: {

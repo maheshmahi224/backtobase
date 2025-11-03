@@ -6,13 +6,18 @@ import {
   updateEvent,
   deleteEvent,
   getEventStats,
+  uploadICS,
+  downloadICS,
 } from '../controllers/eventController.js';
 import { protect } from '../middleware/auth.js';
 import { eventValidation, validate } from '../middleware/validator.js';
 
 const router = express.Router();
 
-// All routes are protected
+// Public routes
+router.get('/:id/download-ics', downloadICS);
+
+// All routes below are protected
 router.use(protect);
 
 router.route('/')
@@ -25,5 +30,6 @@ router.route('/:id')
   .delete(deleteEvent);
 
 router.get('/:id/stats', getEventStats);
+router.post('/:id/upload-ics', uploadICS);
 
 export default router;
